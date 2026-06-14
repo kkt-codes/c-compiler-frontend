@@ -1,5 +1,6 @@
 package com.compiler.lexer;
 
+import com.compiler.exception.LexicalException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -8,8 +9,9 @@ import java.util.Map;
 public class Lexer {
     private final String source;
     private final List<Token> tokens = new ArrayList<>();
+    private final List<LexicalException> errorLog = new ArrayList<>();
 
-    // Tracking state
+    // Scanning offsets
     private int start = 0;
     private int current = 0;
     private int line = 1;
@@ -45,9 +47,12 @@ public class Lexer {
         return tokens;
     }
 
+    public List<LexicalException> getErrorLog() {
+        return errorLog;
+    }
+
     private void scanToken() {
         char c = advance();
-
         switch (c) {
             // Single-character tokens
             case '(': addToken(TokenType.LPAREN); break;
@@ -59,101 +64,91 @@ public class Lexer {
             case '+': addToken(TokenType.PLUS); break;
             case '-': addToken(TokenType.MINUS); break;
             case '*': addToken(TokenType.MULT); break;
-
-            // Operators that might be one or two characters
-            case '=': addToken(match('=') ? TokenType.EQ : TokenType.ASSIGN); break;
-            case '!': addToken(match('=') ? TokenType.NEQ : TokenType.UNKNOWN); break;
-            case '<': addToken(match('=') ? TokenType.LTE : TokenType.LT); break;
-            case '>': addToken(match('=') ? TokenType.GTE : TokenType.GT); break;
-
-            // Division or Comments
             case '/':
                 if (match('/')) {
-                    // Single-line comment: keep reading until newline
+                    // Line Comments handler
                     while (peek() != '\n' && !isAtEnd()) advance();
-                } else if (match('*')) {
-                    // Multi-line comment: keep reading until */
-                    while (!(peek() == '*' && peekNext() == '/') && !isAtEnd()) {
-                        if (peek() == '\n') {
-                            line++;
-                            column = 0; // Reset column on newline
-                        }
-                        advance();
-                    }
-                    if (!isAtEnd()) {
-                        advance(); // Consume '*'
-                        advance(); // Consume '/'
-                    }
                 } else {
                     addToken(TokenType.DIV);
                 }
                 break;
-
-            // Whitespace
+            case '=':
+                addToken(match('=') ? TokenType.EQ : TokenType.ASSIGN);
+                break;
+            case '!':
+                if (match('=')) {
+                    addToken(TokenType.NEQ);
+                } else {
+                    addToken(TokenType.UNKNOWN);
+                }
+                break;
+            case '<':
+                addToken(match('=') ? TokenType.LTE : TokenType.LT);
+                break;
+            case '>':
+                addToken(match('=') ? TokenType.GTE : TokenType.GT);
+                break;
             case ' ':
             case '\r':
             case '\t':
-                // Ignore whitespace
+                // Skip basic whitespaces
                 break;
             case '\n':
                 line++;
                 column = 1;
                 break;
-
-            // Character Literals
             case '\'':
-                character();
+                scanCharLiteral();
                 break;
-
-            // Default: Numbers, Identifiers, or Errors
             default:
                 if (isDigit(c)) {
-                    number();
+                    scanNumberLiteral();
                 } else if (isAlpha(c)) {
-                    identifier();
+                    scanIdentifierOrKeyword();
                 } else {
-                    // Graceful error handling for unrecognized characters
-                    addToken(TokenType.UNKNOWN, Character.toString(c));
+                    addToken(TokenType.UNKNOWN);
                 }
                 break;
         }
     }
 
-    private void identifier() {
-        while (isAlphaNumeric(peek())) advance();
-
-        String text = source.substring(start, current);
-        TokenType type = keywords.getOrDefault(text, TokenType.IDENTIFIER);
-        addToken(type);
-    }
-
-    private void number() {
-        while (isDigit(peek())) advance();
-
-        // Look for a fractional part
-        if (peek() == '.' && isDigit(peekNext())) {
-            advance(); // Consume the "."
-            while (isDigit(peek())) advance();
-            addToken(TokenType.LITERAL_NUM);
-        } else {
-            addToken(TokenType.LITERAL_NUM);
-        }
-    }
-
-    private void character() {
-        if (peek() != '\'' && !isAtEnd()) {
-            advance(); // Consume the character inside
+    private void scanCharLiteral() {
+        if (!isAtEnd() && peek() != '\'') {
+            advance(); // Consume internal char character
             if (peek() == '\'') {
-                advance(); // Consume the closing quote
+                advance(); // Consume terminal quote
                 addToken(TokenType.LITERAL_CHAR);
                 return;
             }
+        } else if (!isAtEnd() && peek() == '\'') {
+            advance(); // Handle empty sequences safely
+            addToken(TokenType.LITERAL_CHAR);
+            return;
         }
-        // If we reach here, it's a malformed character literal
         addToken(TokenType.UNKNOWN);
     }
 
-    // --- Helper Methods ---
+    private void scanNumberLiteral() {
+        while (isDigit(peek())) advance();
+
+        // Optional dot lookahead for tracking floating point tokens
+        if (peek() == '.' && isDigit(peekNext())) {
+            advance();
+            while (isDigit(peek())) advance();
+        }
+        addToken(TokenType.LITERAL_NUM);
+    }
+
+    private void scanIdentifierOrKeyword() {
+        while (isAlphaNumeric(peek())) advance();
+
+        String text = source.substring(start, current);
+        TokenType type = keywords.get(text);
+        if (type == null) {
+            type = TokenType.IDENTIFIER;
+        }
+        addToken(type);
+    }
 
     private boolean isAtEnd() {
         return current >= source.length();
@@ -182,9 +177,7 @@ public class Lexer {
     }
 
     private boolean isAlpha(char c) {
-        return (c >= 'a' && c <= 'z') ||
-                (c >= 'A' && c <= 'Z') ||
-                c == '_';
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
     }
 
     private boolean isDigit(char c) {
@@ -201,5 +194,8 @@ public class Lexer {
 
     private void addToken(TokenType type, String text) {
         tokens.add(new Token(type, text, line, startColumn));
+        if (type == TokenType.UNKNOWN) {
+            errorLog.add(new LexicalException("Invalid or unrecognized character sequence", line, startColumn, text));
+        }
     }
 }

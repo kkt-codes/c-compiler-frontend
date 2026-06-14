@@ -1,5 +1,6 @@
 package com.compiler.semantic;
 
+import com.compiler.exception.SemanticException;
 import com.compiler.lexer.Token;
 import com.compiler.lexer.TokenType;
 import com.compiler.parser.ParseTreeNode;
@@ -10,123 +11,45 @@ import java.util.List;
 public class SemanticAnalyzer {
     private final ParseTreeNode root;
     private final SymbolTable symbolTable;
-    private final List<String> semanticErrors;
+    private final List<SemanticException> errorLog;
 
     public SemanticAnalyzer(ParseTreeNode root) {
         this.root = root;
         this.symbolTable = new SymbolTable();
-        this.semanticErrors = new ArrayList<>();
+        this.errorLog = new ArrayList<>();
     }
 
     public void analyze() {
         visit(root);
     }
 
-    public List<String> getSemanticErrors() {
-        return semanticErrors;
+    public List<SemanticException> getErrorLog() {
+        return errorLog;
     }
 
-    // --- Core Tree Traversal ---
+    public List<Symbol> getSymbolHistory() {
+        return symbolTable.getHistory();
+    }
 
     private void visit(ParseTreeNode node) {
         if (node == null) return;
-
-        // Leaf nodes or Epsilon branches don't need statement-level routing
-        if (node.getToken() != null || node.getNodeName().equals("ε")) {
+        if (node.getToken() != null || node.getNodeName().equals("ε") || node.getNodeName().equals("蔚")) {
             return;
         }
 
         switch (node.getNodeName()) {
-            case "CompoundStatement":
-                visitCompoundStatement(node);
-                break;
-            case "Declaration":
-                visitDeclaration(node);
-                break;
-            case "IdStatement":
-                visitIdStatement(node);
-                break;
-            case "IterativeStatement":
-                visitIterativeStatement(node);
-                break;
-            case "SelectionStatement":
-                visitSelectionStatement(node);
-                break;
-            case "ReturnStatement":
-                visitReturnStatement(node);
-                break;
-            default:
-                // Cascade down through intermediate structural nodes (Program', StatementList, etc.)
+            case "CompoundStatement" -> visitCompoundStatement(node);
+            case "Declaration" -> visitDeclaration(node);
+            case "IdStatement" -> visitIdStatement(node);
+            case "IterativeStatement" -> visitIterativeStatement(node);
+            case "SelectionStatement" -> visitSelectionStatement(node);
+            default -> {
                 for (ParseTreeNode child : node.getChildren()) {
                     visit(child);
                 }
-                break;
-        }
-    }
-
-    private void visitIterativeStatement(ParseTreeNode node) {
-        // CST Structure for while loop:
-        // Child 0: 'while' or 'for' token
-        // Child 1: '(' token
-        // Child 2: Expression (The condition)
-        // Child 3: ')' token
-        // Child 4: Statement/CompoundStatement (The loop body)
-
-        Token loopToken = node.getChildren().get(0).getToken();
-
-        if (loopToken.getType() == TokenType.KEYWORD_WHILE) {
-            ParseTreeNode conditionNode = node.getChildren().get(2);
-            TokenType conditionType = getExpressionType(conditionNode);
-
-            if (conditionType == TokenType.UNKNOWN) {
-                logError(loopToken, "Invalid or mixed types inside 'while' loop condition.");
-            } else if (conditionType == TokenType.KEYWORD_VOID) {
-                logError(loopToken, "Loop condition cannot evaluate to void.");
             }
-
-            // Visit the loop body
-            visit(node.getChildren().get(4));
-        }
-        // Note: For loops have a slightly different CST structure due to initialization and updates,
-        // which you can traverse similarly based on your parseIterativeStatement() logic.
-    }
-
-    private void visitSelectionStatement(ParseTreeNode node) {
-        // Similar to while loops, extract the condition and validate it
-        Token ifToken = node.getChildren().get(0).getToken();
-        ParseTreeNode conditionNode = node.getChildren().get(2); // The Expression
-
-        TokenType conditionType = getExpressionType(conditionNode);
-        if (conditionType == TokenType.UNKNOWN || conditionType == TokenType.KEYWORD_VOID) {
-            logError(ifToken, "Invalid condition inside 'if' statement.");
-        }
-
-        // Visit the 'if' body
-        visit(node.getChildren().get(4));
-
-        // Visit the 'else' tail if it exists
-        visit(node.getChildren().get(5));
-    }
-
-    private void visitReturnStatement(ParseTreeNode node) {
-        // CST Structure:
-        // Child 0: 'return' keyword
-        // Child 1: Expression (Optional)
-        // Child 2: ';' token
-        Token returnToken = node.getChildren().get(0).getToken();
-
-        if (node.getChildren().size() == 3) {
-            ParseTreeNode exprNode = node.getChildren().get(1);
-            TokenType returnType = getExpressionType(exprNode);
-
-            if (returnType == TokenType.UNKNOWN) {
-                logError(returnToken, "Invalid expression in return statement.");
-            }
-            // Future feature: Verify returnType matches the current enclosing function's type
         }
     }
-
-    // --- Statement Handlers with Type Checking ---
 
     private void visitCompoundStatement(ParseTreeNode node) {
         symbolTable.enterScope();
@@ -137,77 +60,83 @@ public class SemanticAnalyzer {
     }
 
     private void visitDeclaration(ParseTreeNode node) {
-        // CST structure for declaration:
-        // Child 0: Type Token (int, float)
-        // Child 1: Identifier Token (x)
-        // Child 2: '=' Operator Token (if initialized)
-        // Child 3: Expression Node (if initialized)
-        Token typeToken = node.getChildren().get(0).getToken();
-        Token idToken = node.getChildren().get(1).getToken();
+        TokenType declaredType = null;
+        Token identifierToken = null;
 
-        String varName = idToken.getLexeme();
-        TokenType declaredType = typeToken.getType();
-
-        // 1. Scope Rule: Register the variable
-        boolean success = symbolTable.declare(varName, declaredType);
-        if (!success) {
-            logError(idToken, "Variable '" + varName + "' is already declared in this scope.");
-            return;
+        for (ParseTreeNode child : node.getChildren()) {
+            if (child.getToken() != null) {
+                Token t = child.getToken();
+                if (t.getType() == TokenType.KEYWORD_INT || t.getType() == TokenType.KEYWORD_FLOAT ||
+                        t.getType() == TokenType.KEYWORD_CHAR || t.getType() == TokenType.KEYWORD_VOID) {
+                    declaredType = t.getType();
+                } else if (t.getType() == TokenType.IDENTIFIER) {
+                    identifierToken = t;
+                }
+            } else {
+                if (child.getNodeName().equals("Type")) {
+                    for (ParseTreeNode typeChild : child.getChildren()) {
+                        if (typeChild.getToken() != null) declaredType = typeChild.getToken().getType();
+                    }
+                }
+                visit(child);
+            }
         }
 
-        // 2. Type Rule: If an initialization exists, check type compatibility
-        if (node.getChildren().size() > 3) {
-            ParseTreeNode exprNode = node.getChildren().get(3);
-            TokenType assignedExprType = getExpressionType(exprNode);
-
-            if (assignedExprType == TokenType.UNKNOWN) {
-                logError(idToken, "Type mismatch error inside the initialization expression for '" + varName + "'.");
-            } else if (assignedExprType != null && assignedExprType != declaredType) {
-                logError(idToken, "Type mismatch: Cannot assign " + cleanTypeName(assignedExprType) +
-                        " to a variable of type " + cleanTypeName(declaredType) + ".");
+        if (identifierToken != null && declaredType != null) {
+            boolean success = symbolTable.declare(identifierToken.getLexeme(), declaredType);
+            if (!success) {
+                logError(identifierToken, "Variable '" + identifierToken.getLexeme() + "' already declared in this scope.");
             }
         }
     }
 
     private void visitIdStatement(ParseTreeNode node) {
-        // CST structure for assignments:
-        // Child 0: Identifier Token
-        // Child 1: IdStatementTail -> [Child 0: '=', Child 1: Expression]
-        Token idToken = node.getChildren().get(0).getToken();
-        String varName = idToken.getLexeme();
+        Token identifierToken = null;
+        ParseTreeNode expressionNode = null;
 
-        // 1. Scope Rule: Verify declaration exists
-        Symbol symbol = symbolTable.lookup(varName);
-        if (symbol == null) {
-            logError(idToken, "Undeclared variable '" + varName + "'.");
-            return;
+        for (ParseTreeNode child : node.getChildren()) {
+            if (child.getToken() != null && child.getToken().getType() == TokenType.IDENTIFIER) {
+                identifierToken = child.getToken();
+            }
+            if (child.getNodeName().contains("Expression") || child.getNodeName().contains("Expr")) {
+                expressionNode = child;
+            }
+            visit(child);
         }
 
-        // 2. Type Rule: Evaluate right-hand side expression type safety
-        ParseTreeNode tailNode = node.getChildren().get(1);
-        if (tailNode.getNodeName().equals("IdStatementTail") && !tailNode.getChildren().isEmpty()) {
-            ParseTreeNode assignOp = tailNode.getChildren().get(0);
-
-            if (assignOp.getToken() != null && assignOp.getToken().getType() == TokenType.ASSIGN) {
-                ParseTreeNode exprNode = tailNode.getChildren().get(1);
-                TokenType rightHandSideType = getExpressionType(exprNode);
-
-                if (rightHandSideType == TokenType.UNKNOWN) {
-                    logError(idToken, "Type mismatch error within the expression assigned to '" + varName + "'.");
-                } else if (rightHandSideType != null && rightHandSideType != symbol.getType()) {
-                    logError(idToken, "Type mismatch: Cannot assign " + cleanTypeName(rightHandSideType) +
-                            " to variable '" + varName + "' of type " + cleanTypeName(symbol.getType()) + ".");
+        if (identifierToken != null) {
+            Symbol sym = symbolTable.lookup(identifierToken.getLexeme());
+            if (sym == null) {
+                logError(identifierToken, "Variable '" + identifierToken.getLexeme() + "' is undeclared.");
+            } else if (expressionNode != null) {
+                TokenType derivedType = getExpressionType(expressionNode);
+                if (derivedType != TokenType.UNKNOWN && sym.getType() != derivedType) {
+                    if (!isCompatible(sym.getType(), derivedType)) {
+                        logError(identifierToken, "Type mismatch: Cannot assign " + cleanTypeName(derivedType) + " to " + cleanTypeName(sym.getType()) + ".");
+                    }
                 }
             }
         }
     }
 
-    // --- Recursive Synthesized Attribute Type Evaluator ---
+    private void visitIterativeStatement(ParseTreeNode node) {
+        for (ParseTreeNode child : node.getChildren()) {
+            if (child.getNodeName().contains("Expression") || child.getNodeName().contains("Expr")) {
+                getExpressionType(child);
+            }
+            visit(child);
+        }
+    }
 
-    /**
-     * Recursively walks down an Expression subtree to synthesize its type attribute.
-     * If conflicting or mismatched types are blended together, it returns TokenType.UNKNOWN.
-     */
+    private void visitSelectionStatement(ParseTreeNode node) {
+        for (ParseTreeNode child : node.getChildren()) {
+            if (child.getNodeName().contains("Expression") || child.getNodeName().contains("Expr")) {
+                getExpressionType(child);
+            }
+            visit(child);
+        }
+    }
+
     private TokenType getExpressionType(ParseTreeNode node) {
         if (node == null) return null;
 
@@ -215,56 +144,72 @@ public class SemanticAnalyzer {
             Token token = node.getToken();
             if (token.getType() == TokenType.IDENTIFIER) {
                 Symbol s = symbolTable.lookup(token.getLexeme());
-                return (s != null) ? s.getType() : null;
+                if (s == null) {
+                    logError(token, "Variable '" + token.getLexeme() + "' is undeclared.");
+                    return TokenType.UNKNOWN;
+                }
+                return s.getType();
             }
             if (token.getType() == TokenType.LITERAL_NUM) {
                 return token.getLexeme().contains(".") ? TokenType.KEYWORD_FLOAT : TokenType.KEYWORD_INT;
             }
-            if (token.getType() == TokenType.LITERAL_CHAR) return TokenType.KEYWORD_CHAR;
-            return null;
+            if (token.getType() == TokenType.LITERAL_CHAR) {
+                return TokenType.KEYWORD_CHAR;
+            }
+            return token.getType();
         }
 
-        // Check if this node is specifically comparing two sides (e.g., Expression < Expression)
-        if (node.getNodeName().equals("Expression") && node.getChildren().size() == 3) {
-            ParseTreeNode middleChild = node.getChildren().get(1);
-            if (middleChild.getToken() != null) {
-                TokenType op = middleChild.getToken().getType();
-                if (op == TokenType.LT || op == TokenType.GT || op == TokenType.LTE ||
-                        op == TokenType.GTE || op == TokenType.EQ || op == TokenType.NEQ) {
-
-                    TokenType leftType = getExpressionType(node.getChildren().get(0));
-                    TokenType rightType = getExpressionType(node.getChildren().get(2));
-
-                    if (leftType == TokenType.UNKNOWN || rightType == TokenType.UNKNOWN || leftType != rightType) {
-                        return TokenType.UNKNOWN; // Type mismatch in comparison
+        // Handle relational expression operations mapping
+        if (node.getNodeName().equals("Expression") || node.getNodeName().equals("SimpleExpression")) {
+            boolean holdsRelationalOp = false;
+            for (ParseTreeNode child : node.getChildren()) {
+                if (child.getToken() != null) {
+                    TokenType t = child.getToken().getType();
+                    if (t == TokenType.EQ || t == TokenType.NEQ || t == TokenType.LT ||
+                            t == TokenType.GT || t == TokenType.LTE || t == TokenType.GTE) {
+                        holdsRelationalOp = true;
                     }
-                    return TokenType.KEYWORD_INT; // C standards: Relational operators yield an int
                 }
+            }
+            if (holdsRelationalOp) {
+                ParseTreeNode left = node.getChildren().size() > 0 ? node.getChildren().get(0) : null;
+                ParseTreeNode right = node.getChildren().size() > 2 ? node.getChildren().get(2) : null;
+                TokenType leftType = getExpressionType(left);
+                TokenType rightType = getExpressionType(right);
+                if (leftType == TokenType.UNKNOWN || rightType == TokenType.UNKNOWN || leftType != rightType) {
+                    return TokenType.UNKNOWN;
+                }
+                return TokenType.KEYWORD_INT; // Relational checks evaluate to integer levels
             }
         }
 
-        // Standard synthesis for all other branches (Term, Factor, etc.)
-        TokenType synthesizedType = null;
+        TokenType structuralType = null;
         for (ParseTreeNode child : node.getChildren()) {
             TokenType childType = getExpressionType(child);
             if (childType != null) {
                 if (childType == TokenType.UNKNOWN) return TokenType.UNKNOWN;
-                if (synthesizedType == null) {
-                    synthesizedType = childType;
-                } else if (synthesizedType != childType) {
-                    return TokenType.UNKNOWN;
+                if (structuralType == null) {
+                    structuralType = childType;
+                } else if (structuralType != childType) {
+                    if ((structuralType == TokenType.KEYWORD_INT && childType == TokenType.KEYWORD_FLOAT) ||
+                            (structuralType == TokenType.KEYWORD_FLOAT && childType == TokenType.KEYWORD_INT)) {
+                        structuralType = TokenType.KEYWORD_FLOAT;
+                    } else {
+                        return TokenType.UNKNOWN;
+                    }
                 }
             }
         }
-        return synthesizedType;
+        return structuralType;
     }
 
-    // --- Formatting Helpers ---
+    private boolean isCompatible(TokenType target, TokenType evaluated) {
+        if (target == evaluated) return true;
+        return (target == TokenType.KEYWORD_FLOAT && evaluated == TokenType.KEYWORD_INT);
+    }
 
     private void logError(Token token, String message) {
-        String errorMsg = String.format("Semantic Error at Line %d, Col %d: %s",
-                token.getLine(), token.getColumn(), message);
-        semanticErrors.add(errorMsg);
+        errorLog.add(new SemanticException(message, token.getLine(), token.getColumn()));
     }
 
     private String cleanTypeName(TokenType type) {
@@ -272,6 +217,7 @@ public class SemanticAnalyzer {
             case KEYWORD_INT -> "int";
             case KEYWORD_FLOAT -> "float";
             case KEYWORD_CHAR -> "char";
+            case KEYWORD_VOID -> "void";
             default -> type.name();
         };
     }
