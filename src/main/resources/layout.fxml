@@ -3,25 +3,37 @@
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 
-<VBox prefHeight="700.0" prefWidth="1100.0" spacing="10" stylesheets="@style.css" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://fxml.com/fxml/1" fx:controller="com.compiler.ui.AppController">
+<VBox prefHeight="700.0" prefWidth="1100.0" stylesheets="@style.css" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://fxml.com/fxml/1" fx:controller="com.compiler.ui.AppController">
 
-    <AnchorPane prefHeight="50.0" styleClass="header-bar">
-        <Label layoutX="14.0" layoutY="14.0" styleClass="header-title" text="C Language Lexical &amp; Syntax Analyzer" />
+    <AnchorPane prefHeight="55.0" styleClass="header-bar">
+        <Label layoutX="20.0" layoutY="16.0" styleClass="header-title" text="C Language Lexical &amp; Syntax Analyzer" />
     </AnchorPane>
 
-    <SplitPane dividerPositions="0.4" VBox.vgrow="ALWAYS">
+    <SplitPane dividerPositions="0.4" VBox.vgrow="ALWAYS" styleClass="main-split-pane">
 
-        <VBox spacing="10" styleClass="editor-container">
-            <Label styleClass="section-label" text="C Source Code Input:" />
-            <TextArea fx:id="codeTextArea" promptText="/* Enter your C code here */&#10;int main() {&#10;    int x = 10;&#10;    return x;&#10;}" VBox.vgrow="ALWAYS" styleClass="code-editor"/>
-            <HBox alignment="CENTER_RIGHT" spacing="10">
+        <VBox spacing="12" styleClass="editor-container">
+            <HBox alignment="BOTTOM_LEFT">
+                <Label styleClass="section-label" text="C Source Code:" />
+                <Region HBox.hgrow="ALWAYS" />
+                <Button onAction="#handleLoadFile" styleClass="btn-tertiary" text="Load .C File" />
+            </HBox>
+
+            <TextArea fx:id="codeTextArea" promptText="/* Enter your C code here */&#10;int main() {&#10;    int x = 10;&#10;    return x;&#10;}" styleClass="code-editor" VBox.vgrow="ALWAYS" />
+
+            <HBox alignment="CENTER_RIGHT" spacing="12">
                 <Button onAction="#handleClearCode" styleClass="btn-secondary" text="Clear" />
                 <Button onAction="#handleCompile" styleClass="btn-primary" text="Run Analysis" />
             </HBox>
         </VBox>
 
-        <TabPane tabClosingPolicy="UNAVAILABLE">
-            <Tab text="Token List">
+        <TabPane styleClass="custom-tab-pane" tabClosingPolicy="UNAVAILABLE">
+            <Tab text="Console">
+                <VBox styleClass="tab-content">
+                    <TextArea fx:id="consoleTextArea" editable="false" styleClass="console-output" VBox.vgrow="ALWAYS" />
+                </VBox>
+            </Tab>
+
+            <Tab text="Token Stream">
                 <VBox styleClass="tab-content">
                     <TableView fx:id="tokenTableView" VBox.vgrow="ALWAYS">
                         <columns>
@@ -34,30 +46,25 @@
                 </VBox>
             </Tab>
 
-            <Tab text="Concrete Syntax Tree">
-                <VBox styleClass="tab-content">
-                    <TreeView fx:id="parseTreeView" VBox.vgrow="ALWAYS" />
-                </VBox>
-            </Tab>
-
             <Tab text="Symbol Table">
                 <VBox styleClass="tab-content">
                     <TableView fx:id="symbolTableView" VBox.vgrow="ALWAYS">
                         <columns>
-                            <TableColumn fx:id="symbolNameColumn" prefWidth="200.0" text="Identifier Name" />
-                            <TableColumn fx:id="symbolTypeColumn" prefWidth="180.0" text="Data Type" />
-                            <TableColumn fx:id="symbolScopeColumn" prefWidth="120.0" text="Scope Level" />
+                            <TableColumn fx:id="symbolNameColumn" prefWidth="180.0" text="Identifier Name" />
+                            <TableColumn fx:id="symbolTypeColumn" prefWidth="130.0" text="Data Type" />
+                            <TableColumn fx:id="symbolCategoryColumn" prefWidth="140.0" text="Category" />
+                            <TableColumn fx:id="symbolScopeColumn" prefWidth="140.0" text="Scope Level" />
+                            <TableColumn fx:id="symbolLineColumn" prefWidth="90.0" text="Line" />
                         </columns>
                     </TableView>
                 </VBox>
             </Tab>
 
-            <Tab text="Compiler Console / Errors">
+            <Tab text="Parse Tree">
                 <VBox styleClass="tab-content">
-                    <TextArea fx:id="consoleTextArea" editable="false" styleClass="console-output" VBox.vgrow="ALWAYS" />
+                    <TreeView fx:id="parseTreeView" VBox.vgrow="ALWAYS" />
                 </VBox>
             </Tab>
-
         </TabPane>
     </SplitPane>
 </VBox>

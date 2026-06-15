@@ -1,8 +1,7 @@
 int verifyAccess(int age, int overrideCode) {
-    int grantAccess;
-    grantAccess = 0;
+    int grantAccess = 0, threshold = 65;
 
-    if (age >= 18 && overrideCode == 999 || age > 65) {
+    if (age + 2 >= 18 && overrideCode == 999 || age > threshold) {
         grantAccess = 1;
         return grantAccess;
     } else {

@@ -1,5 +1,5 @@
 int calculateArea(int width, int height) {
-    int area, perimeter;
+    int area = 0, perimeter = 0;
 
     area = width * height;
     return area;
