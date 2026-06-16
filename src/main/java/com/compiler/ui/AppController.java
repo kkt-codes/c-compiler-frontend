@@ -18,6 +18,12 @@ import javafx.scene.control.cell.PropertyValueFactory;
 
 import java.util.List;
 
+import javafx.stage.FileChooser;
+import javafx.stage.Stage;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+
 public class AppController {
 
     @FXML private TextArea codeTextArea;
@@ -30,14 +36,16 @@ public class AppController {
     @FXML private TableColumn<Token, Integer> tokenLineColumn;
     @FXML private TableColumn<Token, Integer> tokenColumnColumn;
 
-    // Ast View Components
+    // Parse Tree View Components
     @FXML private TreeView<String> parseTreeView;
 
     // Symbol View Table Elements
     @FXML private TableView<Symbol> symbolTableView;
     @FXML private TableColumn<Symbol, String> symbolNameColumn;
-    @FXML private TableColumn<Symbol, TokenType> symbolTypeColumn;
+    @FXML private TableColumn<Symbol, String> symbolTypeColumn;
+    @FXML private TableColumn<Symbol, String> symbolCategoryColumn;
     @FXML private TableColumn<Symbol, Integer> symbolScopeColumn;
+    @FXML private TableColumn<Symbol, Integer> symbolLineColumn;
 
     @FXML
     public void initialize() {
@@ -48,7 +56,24 @@ public class AppController {
 
         symbolNameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
         symbolTypeColumn.setCellValueFactory(new PropertyValueFactory<>("type"));
-        symbolScopeColumn.setCellValueFactory(new PropertyValueFactory<>("scopeLevel"));
+        symbolCategoryColumn.setCellValueFactory(new PropertyValueFactory<>("category"));
+        symbolScopeColumn.setCellValueFactory(new PropertyValueFactory<>("scope"));
+        symbolLineColumn.setCellValueFactory(new PropertyValueFactory<>("lineNumber"));
+
+        String starterCode = """
+            int main() {
+                // This comment will be ignored.
+                int x = 10;
+                float y = 5.5;
+                
+                if (x > 5) {
+                    y = y + 1.0;
+                }
+                
+                return 0;
+            }
+            """;
+        codeTextArea.setText(starterCode);
     }
 
     @FXML
@@ -114,7 +139,7 @@ public class AppController {
                 consoleTextArea.appendText(semEx.getMessage() + "\n");
             }
         } else {
-            consoleTextArea.appendText("Compilation Finished Successfully! 0 frontend anomalies detected.\n");
+            consoleTextArea.appendText("Compilation Finished Successfully! 0(Zero) frontend anomalies detected.\n");
         }
     }
 
@@ -127,11 +152,40 @@ public class AppController {
         symbolTableView.getItems().clear();
     }
 
+    @FXML
+    public void handleLoadFile() {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Open C Source File");
+
+        // Restrict the file picker to standard C and text files
+        fileChooser.getExtensionFilters().addAll(
+                new FileChooser.ExtensionFilter("C Source Files", "*.c"),
+                new FileChooser.ExtensionFilter("Text Files", "*.txt"),
+                new FileChooser.ExtensionFilter("All Files", "*.*")
+        );
+
+        Stage stage = (Stage) codeTextArea.getScene().getWindow();
+        File selectedFile = fileChooser.showOpenDialog(stage);
+
+        if (selectedFile != null) {
+            try {
+                // Read the entire file into a single string and push it to the UI
+                String content = Files.readString(selectedFile.toPath());
+                codeTextArea.setText(content);
+                consoleTextArea.setText("System: Successfully loaded file -> " + selectedFile.getName() + "\n");
+            } catch (IOException e) {
+                consoleTextArea.setText("System Error: Could not read the file.\n" + e.getMessage());
+            }
+        } else {
+            consoleTextArea.setText("System: File load cancelled by user.\n");
+        }
+    }
+
     private TreeItem<String> buildVisualTree(ParseTreeNode node) {
         if (node == null) return null;
 
         // Filter out structural tokens representing epsilon leaves cleanly
-        if (node.getNodeName().equals("ε") || node.getNodeName().equals("蔚")) {
+        if (node.getNodeName().equals("ε")) {
             return null;
         }
 
@@ -139,7 +193,7 @@ public class AppController {
         if (node.getNodeName().endsWith("Prime") || node.getNodeName().endsWith("Tail")) {
             if (node.getChildren().size() == 1) {
                 String singleChild = node.getChildren().get(0).getNodeName();
-                if (singleChild.equals("ε") || singleChild.equals("蔚")) {
+                if (singleChild.equals("ε")) {
                     return null;
                 }
             }

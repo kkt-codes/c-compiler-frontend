@@ -1,24 +1,24 @@
 package com.compiler.semantic;
 
-import com.compiler.lexer.TokenType;
-
 public class Symbol {
     private final String name;
-    private final TokenType type; // e.g., KEYWORD_INT, KEYWORD_FLOAT
-    private final int scopeLevel;
+    private final String type;       // int, double, void, etc.
+    private final String category;   // Variable, Function, Parameter
+    private final String scope;      // Global, Local
+    private final int lineNumber;
 
-    public Symbol(String name, TokenType type, int scopeLevel) {
+    public Symbol(String name, String type, String category, String scope, int lineNumber) {
         this.name = name;
         this.type = type;
-        this.scopeLevel = scopeLevel;
+        this.category = category;
+        this.scope = scope;
+        this.lineNumber = lineNumber;
     }
 
+    // Getters matching standard Java Bean naming conventions for TableView binding
     public String getName() { return name; }
-    public TokenType getType() { return type; }
-    public int getScopeLevel() { return scopeLevel; }
-
-    @Override
-    public String toString() {
-        return String.format("Symbol[Name: %s, Type: %s, Scope: %d]", name, type, scopeLevel);
-    }
+    public String getType() { return type; }
+    public String getCategory() { return category; }
+    public String getScope() { return scope; }
+    public int getLineNumber() { return lineNumber; }
 }

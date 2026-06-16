@@ -25,10 +25,14 @@ public class Parser {
         ParseTreeNode root = new ParseTreeNode("Program'");
 
         while (!isAtEnd()) {
+            // Guard check: if we are peeking at EOF, break immediately
+            if (check(TokenType.EOF)) break;
             try {
                 // If it starts with a data type, it's either a declaration or a function definition
                 if (check(TokenType.KEYWORD_INT) || check(TokenType.KEYWORD_FLOAT) ||
+                        check(TokenType.KEYWORD_CONST) || check(TokenType.KEYWORD_DOUBLE) ||
                         check(TokenType.KEYWORD_CHAR) || check(TokenType.KEYWORD_VOID)) {
+
                     root.addChild(parseDeclarationOrFunction());
                 } else {
                     root.addChild(parseStatement());
@@ -49,12 +53,20 @@ public class Parser {
     // --- Core Recursive Descent Grammar Implementation ---
 
     private ParseTreeNode parseDeclarationOrFunction() {
+        ParseTreeNode constNode = null;
+
+        // Check for and consume the 'const' qualifier first
+        if (check(TokenType.KEYWORD_CONST)) {
+            constNode = new ParseTreeNode(advance());
+        }
+
         Token typeToken = advance(); // Consume fundamental C data type keyword
         Token id = consume(TokenType.IDENTIFIER, "Expected identifier name.");
 
         if (check(TokenType.LPAREN)) {
             // Found a function definition signature: type id ( parameters ) { ... }
             ParseTreeNode node = new ParseTreeNode("FunctionDefinition");
+            if (constNode != null) node.addChild(constNode);
             node.addChild(new ParseTreeNode(typeToken));
             node.addChild(new ParseTreeNode(id));
             node.addChild(new ParseTreeNode(advance())); // Consume '('
@@ -69,6 +81,7 @@ public class Parser {
         } else {
             // Found a standard declaration statement
             ParseTreeNode node = new ParseTreeNode("Declaration");
+            if (constNode != null) node.addChild(constNode);
             node.addChild(new ParseTreeNode(typeToken));
             node.addChild(new ParseTreeNode(id));
 
@@ -76,6 +89,19 @@ public class Parser {
                 node.addChild(new ParseTreeNode(previous())); // '='
                 node.addChild(parseExpression());
             }
+
+            // Handle comma-separated multiple declarations
+            while (match(TokenType.COMMA)) {
+                node.addChild(new ParseTreeNode(previous())); // ','
+                Token nextId = consume(TokenType.IDENTIFIER, "Expected identifier after comma.");
+                node.addChild(new ParseTreeNode(nextId));
+
+                if (match(TokenType.ASSIGN)) {
+                    node.addChild(new ParseTreeNode(previous())); // '='
+                    node.addChild(parseExpression());
+                }
+            }
+
             consume(TokenType.SEMICOLON, "Expected ';' after variable declaration statement.");
             node.addChild(new ParseTreeNode(previous()));
             return node;
@@ -108,7 +134,8 @@ public class Parser {
 
     private ParseTreeNode parseStatement() {
         if (check(TokenType.KEYWORD_INT) || check(TokenType.KEYWORD_FLOAT) ||
-                check(TokenType.KEYWORD_CHAR) || check(TokenType.KEYWORD_VOID)) {
+                check(TokenType.KEYWORD_CHAR) || check(TokenType.KEYWORD_VOID) ||
+                check(TokenType.KEYWORD_CONST)) {
             return parseDeclarationOrFunction();
         }
         if (match(TokenType.KEYWORD_IF)) return parseSelectionStatement();
@@ -116,6 +143,11 @@ public class Parser {
         if (match(TokenType.KEYWORD_FOR)) return parseForStatement();
         if (match(TokenType.KEYWORD_RETURN)) return parseReturnStatement();
         if (check(TokenType.LBRACE)) return parseCompoundStatement();
+
+        if (check(TokenType.RBRACE)) {
+            Token unexpected = advance();
+            throw error(unexpected, "Unexpected closing bracket '}'.");
+        }
 
         // Lookahead check to parse explicit Function Call Statements separately from Assignment
         if (check(TokenType.IDENTIFIER) && peekNext().getType() == TokenType.LPAREN) {
@@ -157,7 +189,8 @@ public class Parser {
 
         // Part I: Initialization
         if (check(TokenType.KEYWORD_INT) || check(TokenType.KEYWORD_FLOAT) ||
-                check(TokenType.KEYWORD_CHAR) || check(TokenType.KEYWORD_VOID)) {
+                check(TokenType.KEYWORD_CHAR) || check(TokenType.KEYWORD_VOID) ||
+                check(TokenType.KEYWORD_CONST)) {
             node.addChild(parseDeclarationOrFunction());
         } else if (match(TokenType.SEMICOLON)) {
             node.addChild(new ParseTreeNode(previous()));
@@ -173,7 +206,16 @@ public class Parser {
 
         // Part III: Increment Expression
         if (!check(TokenType.RPAREN)) {
-            node.addChild(parseExpression());
+            // Lookahead: If it's an ID followed by '=', treat it as an assignment for the loop increment
+            if (check(TokenType.IDENTIFIER) && peekNext().getType() == TokenType.ASSIGN) {
+                ParseTreeNode assignNode = new ParseTreeNode("AssignmentStatement");
+                assignNode.addChild(new ParseTreeNode(consume(TokenType.IDENTIFIER, "")));
+                assignNode.addChild(new ParseTreeNode(consume(TokenType.ASSIGN, "")));
+                assignNode.addChild(parseExpression());
+                node.addChild(assignNode);
+            } else {
+                node.addChild(parseExpression());
+            }
         }
         node.addChild(new ParseTreeNode(consume(TokenType.RPAREN, "Expected ')' matching initialization clauses.")));
         node.addChild(parseStatement());
@@ -194,7 +236,12 @@ public class Parser {
         ParseTreeNode node = new ParseTreeNode("CompoundStatement");
         node.addChild(new ParseTreeNode(consume(TokenType.LBRACE, "Expected entry '{' scope descriptor bracket.")));
         while (!check(TokenType.RBRACE) && !isAtEnd()) {
-            node.addChild(parseStatement());
+            try {
+                node.addChild(parseStatement());
+            } catch (ParseException error) {
+                // Intercept the panic locally so the entire function definition is aborted
+                synchronize();
+            }
         }
         node.addChild(new ParseTreeNode(consume(TokenType.RBRACE, "Expected exiting '}' scope delimiter bracket.")));
         return node;
@@ -246,7 +293,7 @@ public class Parser {
         node.addChild(parseArithmeticExpression());
 
         // Relational & Boolean Operator Precedence Layer
-        if (match(TokenType.EQ, TokenType.NEQ, TokenType.LT, TokenType.GT, TokenType.LTE, TokenType.GTE)) {
+        while (match(TokenType.EQ, TokenType.NEQ, TokenType.LT, TokenType.GT, TokenType.LTE, TokenType.GTE, TokenType.AND, TokenType.OR)) {
             node.addChild(new ParseTreeNode(previous())); // Operator terminal
             node.addChild(parseArithmeticExpression());  // Right-hand evaluation chain
         }
@@ -296,7 +343,6 @@ public class Parser {
     // --- Helper Frameworks ---
 
     private void synchronize() {
-        advance();
         while (!isAtEnd()) {
             if (previous().getType() == TokenType.SEMICOLON) return;
 
@@ -309,18 +355,28 @@ public class Parser {
                 case KEYWORD_WHILE:
                 case KEYWORD_FOR:
                 case KEYWORD_RETURN:
+                case KEYWORD_CONST:
+                case RBRACE:
                     return;
+                default:
+                    advance(); // Safely skip over structural clutter from the panicked statement
+                    break;
             }
-            advance();
         }
     }
 
     private ParseException error(Token token, String message) {
-        // 1. Create and log the detailed checked exception for UI/logs
-        SyntaxException exception = new SyntaxException(message, token.getLine(), token.getColumn());
+        Token targetToken = token;
+
+        // Shift error backward to the previous token if the peeked token is on a new line.
+        // This dramatically improves the accuracy of "missing punctuation" line numbers.
+        if (current > 0 && previous().getLine() < token.getLine()) {
+            targetToken = previous();
+        }
+
+        SyntaxException exception = new SyntaxException(message, targetToken.getLine(), targetToken.getColumn());
         errorLog.add(exception);
 
-        // 2. Return the internal RuntimeException to unwind the parser stack safely
         return new ParseException();
     }
 
@@ -350,7 +406,7 @@ public class Parser {
     }
 
     private boolean isAtEnd() {
-        return peek().getType() == TokenType.EOF;
+        return current >= tokens.size() || peek().getType() == TokenType.EOF;
     }
 
     private Token peek() {

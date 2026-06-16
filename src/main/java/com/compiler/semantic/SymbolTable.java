@@ -36,17 +36,18 @@ public class SymbolTable {
         }
     }
 
-    public boolean declare(String name, TokenType type) {
+    // Accepts the full explicit string and line attributes required by Symbol
+    public boolean declare(String name, String type, String category, String scope, int lineNumber) {
         Map<String, Symbol> currentScope = scopes.peek();
 
         if (currentScope.containsKey(name)) {
             return false; // Error: Redeclaration in the same scope
         }
 
-        Symbol newSymbol = new Symbol(name, type, currentScopeLevel);
+        Symbol newSymbol = new Symbol(name, type, category, scope, lineNumber);
         currentScope.put(name, newSymbol);
 
-        // NEW: Add to the permanent history ledger for the GUI
+        // Add to the permanent history ledger for the GUI
         history.add(newSymbol);
 
         return true;

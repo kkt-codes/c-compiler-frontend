@@ -4,8 +4,10 @@ public enum TokenType {
     // Data Types
     KEYWORD_INT,
     KEYWORD_FLOAT,
+    KEYWORD_DOUBLE,
     KEYWORD_CHAR,
     KEYWORD_VOID,
+    KEYWORD_CONST,
 
     // Control Flow Keywords
     KEYWORD_IF,
@@ -33,6 +35,11 @@ public enum TokenType {
     GT,           // >
     LTE,          // <=
     GTE,          // >=
+
+    // Logical Operators
+    AND,          // &&
+    OR,           // ||
+    NOT,          // !
 
     // Delimiters & Punctuation
     SEMICOLON,    // ;

@@ -23,6 +23,7 @@ public class Lexer {
     static {
         keywords.put("int", TokenType.KEYWORD_INT);
         keywords.put("float", TokenType.KEYWORD_FLOAT);
+        keywords.put("double", TokenType.KEYWORD_DOUBLE);
         keywords.put("char", TokenType.KEYWORD_CHAR);
         keywords.put("void", TokenType.KEYWORD_VOID);
         keywords.put("if", TokenType.KEYWORD_IF);
@@ -30,6 +31,7 @@ public class Lexer {
         keywords.put("while", TokenType.KEYWORD_WHILE);
         keywords.put("for", TokenType.KEYWORD_FOR);
         keywords.put("return", TokenType.KEYWORD_RETURN);
+        keywords.put("const", TokenType.KEYWORD_CONST);
     }
 
     public Lexer(String source) {
@@ -66,8 +68,27 @@ public class Lexer {
             case '*': addToken(TokenType.MULT); break;
             case '/':
                 if (match('/')) {
-                    // Line Comments handler
+                    // Single-Line Comments handler
                     while (peek() != '\n' && !isAtEnd()) advance();
+                } else if (match('*')) {
+                    // Multi-Line Comments handler
+                    while (!isAtEnd() && !(peek() == '*' && peekNext() == '/')) {
+                        if (peek() == '\n') {
+                            line++;
+                            column = 0; // Set to 0 so the advance() call below pushes it to 1
+                        }
+                        advance();
+                    }
+
+                    // Check if we hit the end of the file without closing the comment
+                    if (isAtEnd()) {
+                        errorLog.add(new LexicalException("Unterminated multi-line comment sequence.", line, startColumn, "/*"));
+                        return;
+                    }
+
+                    // Consume the closing '*/' characters
+                    advance(); // Consume '*'
+                    advance(); // Consume '/'
                 } else {
                     addToken(TokenType.DIV);
                 }
@@ -79,7 +100,7 @@ public class Lexer {
                 if (match('=')) {
                     addToken(TokenType.NEQ);
                 } else {
-                    addToken(TokenType.UNKNOWN);
+                    addToken(TokenType.NOT);
                 }
                 break;
             case '<':
@@ -87,6 +108,20 @@ public class Lexer {
                 break;
             case '>':
                 addToken(match('=') ? TokenType.GTE : TokenType.GT);
+                break;
+            case '&':
+                if (match('&')) {
+                    addToken(TokenType.AND);
+                } else {
+                    addToken(TokenType.UNKNOWN);
+                }
+                break;
+            case '|':
+                if (match('|')) {
+                    addToken(TokenType.OR);
+                } else {
+                    addToken(TokenType.UNKNOWN);
+                }
                 break;
             case ' ':
             case '\r':
